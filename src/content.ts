@@ -507,12 +507,39 @@ function positionPanel(panel: HTMLElement, zone: HTMLElement) {
   panel.style.position = "fixed";
   panel.style.zIndex = "2147483647";
 
-  // Below the zone, aligned to left edge
-  const top = rect.bottom + 6;
-  const left = rect.left;
+  // Horizontal: align to zone left, clamp to viewport
+  const left = Math.max(4, Math.min(rect.left, window.innerWidth - 380));
+  panel.style.left = `${left}px`;
 
-  panel.style.top = `${Math.min(top, window.innerHeight - 420)}px`;
-  panel.style.left = `${Math.max(4, Math.min(left, window.innerWidth - 380))}px`;
+  // Temporarily place off-screen to measure actual height
+  panel.style.top = "-9999px";
+  panel.style.maxHeight = `${window.innerHeight - 16}px`;
+  panel.style.overflowY = "auto";
+
+  // Use requestAnimationFrame so the browser has laid out the panel
+  requestAnimationFrame(() => {
+    const panelHeight = panel.getBoundingClientRect().height;
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+
+    let top: number;
+    if (spaceBelow >= panelHeight) {
+      // Enough room below
+      top = rect.bottom + 6;
+    } else if (spaceAbove >= panelHeight) {
+      // Flip above the zone
+      top = rect.top - panelHeight - 6;
+    } else {
+      // Not enough room either way — pin to top/bottom with padding
+      if (spaceBelow >= spaceAbove) {
+        top = window.innerHeight - panelHeight - 8;
+      } else {
+        top = 8;
+      }
+    }
+
+    panel.style.top = `${Math.max(8, top)}px`;
+  });
 }
 
 /* ================================================================== */
@@ -960,7 +987,17 @@ async function readFileFromHandle(filePath: string): Promise<File | null> {
 
 function fillFileWithObj(target: UploadTarget, file: File): boolean {
   try {
-    setFileInput(target.fileInput, file);
+    // Re-query the zone for the CURRENT file input — frameworks (React, Vue)
+    // often replace DOM elements after the first upload, so the stored
+    // target.fileInput may point to a detached node.
+    const freshInput =
+      target.zone.querySelector<HTMLInputElement>('input[type="file"]') ||
+      target.fileInput;
+
+    // Update the stored reference so subsequent fills also work
+    target.fileInput = freshInput;
+
+    setFileInput(freshInput, file);
     return true;
   } catch {
     // Fallback: simulate drop on the zone
@@ -983,11 +1020,34 @@ function fillFileWithObj(target: UploadTarget, file: File): boolean {
 }
 
 function setFileInput(input: HTMLInputElement, file: File) {
+  // 1. Clear the input first — ensures the "change" event fires even if the
+  //    same file is selected again, and resets any framework internal state.
+  try {
+    input.value = "";
+  } catch {
+    /* some browsers restrict clearing file inputs */
+  }
+
+  // 2. Set files via DataTransfer
   const dt = new DataTransfer();
   dt.items.add(file);
-  input.files = dt.files;
-  input.dispatchEvent(new Event("change", { bubbles: true }));
+
+  // Use the native property setter directly — React and other frameworks
+  // override the setter, so we call HTMLInputElement.prototype's version
+  // to bypass the framework wrapper and ensure the DOM actually updates.
+  const nativeSetter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "files",
+  )?.set;
+  if (nativeSetter) {
+    nativeSetter.call(input, dt.files);
+  } else {
+    input.files = dt.files;
+  }
+
+  // 3. Dispatch events that frameworks listen to
   input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /* ================================================================== */
