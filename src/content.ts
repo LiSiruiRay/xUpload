@@ -903,9 +903,33 @@ async function getFile(
     logWorkflowError(workflowId, "service.background.GET_FILE.failed", err);
   }
 
+  // Strategy 3: Re-authorize folder access (we're in a user-gesture context
+  // from the click on the recommended file, so showDirectoryPicker() is allowed)
+  logWorkflowStep(workflowId, "service.content.reauthorize.start");
+  try {
+    dirHandle = await (window as any).showDirectoryPicker({ mode: "read" });
+    if (dirHandle) {
+      const retryFile = await readFileFromHandle(fileId);
+      if (retryFile) {
+        logWorkflowStep(workflowId, "service.content.reauthorize.done", {
+          source: "reauthorized_handle",
+        });
+        return retryFile;
+      }
+    }
+  } catch (reErr: any) {
+    if (reErr.name !== "AbortError") {
+      logWorkflowError(
+        workflowId,
+        "service.content.reauthorize.failed",
+        reErr,
+      );
+    }
+  }
+
   logWorkflowStep(workflowId, "service.content.read_file.failed", {
     reason: "missing_or_expired_directory_permission",
-    action: "rescan_from_popup_if_needed",
+    action: "user_cancelled_or_wrong_folder",
   });
   return null;
 }

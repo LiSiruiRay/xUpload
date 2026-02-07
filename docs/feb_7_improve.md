@@ -13,7 +13,6 @@
     - Good since we are purely locally
   - Con:
     - slow since all the folders
-    - 
 - User config: let user config some folders to scan
   - Implementation consideration:
   - check the hash of the file, hash of a folder, etc (different architecture of hash for different level of change)
