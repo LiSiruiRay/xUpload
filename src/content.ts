@@ -987,7 +987,17 @@ async function readFileFromHandle(filePath: string): Promise<File | null> {
 
 function fillFileWithObj(target: UploadTarget, file: File): boolean {
   try {
-    setFileInput(target.fileInput, file);
+    // Re-query the zone for the CURRENT file input — frameworks (React, Vue)
+    // often replace DOM elements after the first upload, so the stored
+    // target.fileInput may point to a detached node.
+    const freshInput =
+      target.zone.querySelector<HTMLInputElement>('input[type="file"]') ||
+      target.fileInput;
+
+    // Update the stored reference so subsequent fills also work
+    target.fileInput = freshInput;
+
+    setFileInput(freshInput, file);
     return true;
   } catch {
     // Fallback: simulate drop on the zone
@@ -1010,11 +1020,34 @@ function fillFileWithObj(target: UploadTarget, file: File): boolean {
 }
 
 function setFileInput(input: HTMLInputElement, file: File) {
+  // 1. Clear the input first — ensures the "change" event fires even if the
+  //    same file is selected again, and resets any framework internal state.
+  try {
+    input.value = "";
+  } catch {
+    /* some browsers restrict clearing file inputs */
+  }
+
+  // 2. Set files via DataTransfer
   const dt = new DataTransfer();
   dt.items.add(file);
-  input.files = dt.files;
-  input.dispatchEvent(new Event("change", { bubbles: true }));
+
+  // Use the native property setter directly — React and other frameworks
+  // override the setter, so we call HTMLInputElement.prototype's version
+  // to bypass the framework wrapper and ensure the DOM actually updates.
+  const nativeSetter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "files",
+  )?.set;
+  if (nativeSetter) {
+    nativeSetter.call(input, dt.files);
+  } else {
+    input.files = dt.files;
+  }
+
+  // 3. Dispatch events that frameworks listen to
   input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /* ================================================================== */
