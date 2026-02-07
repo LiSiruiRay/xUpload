@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite build --watch && npm run postbuild",
-    "build": "vite build && npm run postbuild",
+    "build": "vite build && vite build -c vite.config.content.ts && npm run postbuild",
     "postbuild": "cp manifest.dist.json dist/manifest.json && cp src/content.css dist/content.css"
   },
   "devDependencies": {
