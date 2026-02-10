@@ -114,9 +114,36 @@
       border: 1px solid #d0d0d0;
       color: #666;
       font-size: 11px;
-      cursor: help;
+      cursor: pointer;
       user-select: none;
       flex-shrink: 0;
+    }
+    .clear-help-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .clear-help-tooltip {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      white-space: normal;
+      width: 220px;
+      background: #fff;
+      border: 1px solid #cfcfcf;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      color: #333;
+      font-size: 12px;
+      padding: 6px 8px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 10;
+      transition: opacity 0.12s ease;
+    }
+    .clear-help-wrap:hover .clear-help-tooltip {
+      opacity: 1;
     }
     .config-section {
       border-top: 1px solid #f0f0f0;
@@ -181,11 +208,13 @@
   </div>
   <div class="btn-clear-row">
     <button id="clearBtn" class="btn-clear">Clear scanned data</button>
-    <span
-      class="clear-help"
-      title="Only clears xUpload index, not your actual files."
-      aria-label="Only clears xUpload index, not your actual files."
-    >i</span>
+    <span class="clear-help-wrap">
+      <span
+        class="clear-help"
+        aria-label="Only clears xUpload index, not your actual files."
+      >i</span>
+      <span class="clear-help-tooltip">Only clears xUpload index, not your actual files.</span>
+    </span>
   </div>
   <div class="config-section">
     <div class="config-row">
