@@ -56,3 +56,17 @@ export interface MatchRequestEnhanced {
   boundingRect?: { top: number; left: number; width: number; height: number };
   screenshotBase64?: string;  // populated by content script for VLM mode
 }
+
+// ---- Clear scanned data ----
+
+export interface ClearScannedDataRequest {
+  type: "CLEAR_SCANNED_DATA";
+  workflowId?: string;
+}
+
+export interface ClearScannedDataResponse {
+  ok: boolean;
+  count?: number;
+  workflowId?: string;
+  error?: string;
+}

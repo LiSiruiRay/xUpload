@@ -19,10 +19,12 @@ import {
   type VectorRecord,
 } from "./vectordb";
 import { createWorkflowId, logWorkflowError, logWorkflowStep } from "./workflow";
+import type { ClearScannedDataResponse } from "./types";
 
 const countEl = document.getElementById("count")!;
 const scanBtn = document.getElementById("scanBtn") as HTMLButtonElement;
 const rescanBtn = document.getElementById("rescanBtn") as HTMLButtonElement | null;
+const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement | null;
 const progressEl = document.getElementById("progress")!;
 const fileListEl = document.getElementById("fileList")!;
 const lastScanEl = document.getElementById("lastScan") as HTMLElement | null;
@@ -89,6 +91,48 @@ if (rescanBtn) {
       progressEl.textContent = "Error during rescan. Try selecting folder again.";
       scanBtn.disabled = false;
       if (rescanBtn) rescanBtn.disabled = false;
+    }
+  });
+}
+
+if (clearBtn) {
+  clearBtn.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      "Clear all scanned xUpload data? This only clears xUpload index, not your actual files."
+    );
+    if (!confirmed) return;
+
+    const workflowId = createWorkflowId("clear-popup");
+    logWorkflowStep(workflowId, "clear.popup.click");
+
+    scanBtn.disabled = true;
+    if (rescanBtn) rescanBtn.disabled = true;
+    clearBtn.disabled = true;
+    progressEl.textContent = "Clearing scanned data...";
+
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: "CLEAR_SCANNED_DATA",
+        workflowId,
+      }) as ClearScannedDataResponse;
+
+      if (!resp?.ok) {
+        throw new Error(resp?.error || "Failed to clear scanned data.");
+      }
+
+      const total = await getCount();
+      countEl.textContent = String(total);
+      fileListEl.innerHTML = "";
+      await showLastScanTime();
+      progressEl.textContent = "Scanned data cleared.";
+      logWorkflowStep(workflowId, "clear.popup.done", { remainingIndexedCount: total });
+    } catch (err) {
+      logWorkflowError(workflowId, "clear.popup.failed", err);
+      progressEl.textContent = "Failed to clear scanned data.";
+    } finally {
+      scanBtn.disabled = false;
+      if (rescanBtn) rescanBtn.disabled = false;
+      clearBtn.disabled = false;
     }
   });
 }

@@ -321,6 +321,42 @@ export async function saveRescanConfig(config: RescanConfig): Promise<void> {
   });
 }
 
+/**
+ * Clears all scanned/indexed data while keeping user preferences.
+ * Keeps xupload_config / xupload_enabled (chrome.storage.local side) untouched.
+ */
+export async function clearScannedData(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(
+      [STORE_NAME, VOCAB_STORE, HISTORY_STORE, HANDLE_STORE, CONFIG_STORE],
+      "readwrite"
+    );
+
+    tx.objectStore(STORE_NAME).clear();
+    tx.objectStore(VOCAB_STORE).delete("main");
+    tx.objectStore(HISTORY_STORE).clear();
+    tx.objectStore(HANDLE_STORE).delete("main");
+    tx.objectStore(CONFIG_STORE).delete("pathMemory");
+
+    const configStore = tx.objectStore(CONFIG_STORE);
+    const req = configStore.get("rescan");
+    req.onsuccess = () => {
+      const cfg: RescanConfig = req.result ?? {
+        autoRescanEnabled: true,
+        rescanIntervalMin: 30,
+        lastScanTimestamp: 0,
+      };
+      cfg.lastScanTimestamp = 0;
+      configStore.put(cfg, "rescan");
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 // ---- Dense vector search (for Gemini embeddings) ----
 
 export async function denseSearch(

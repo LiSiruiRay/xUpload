@@ -25,8 +25,17 @@ import {
   saveRescanConfig,
   saveUsedPath,
   getUsedPaths,
+  clearScannedData,
 } from "./vectordb";
-import type { MatchRequest, MatchRequestEnhanced, MatchResponse, UploadHistoryEntry, XUploadConfig } from "./types";
+import type {
+  ClearScannedDataRequest,
+  ClearScannedDataResponse,
+  MatchRequest,
+  MatchRequestEnhanced,
+  MatchResponse,
+  UploadHistoryEntry,
+  XUploadConfig
+} from "./types";
 import { getEmbedding, batchEmbed, describeWithVLM } from "./apiEmbeddings";
 import { createWorkflowId, logWorkflowError, logWorkflowStep, roundScore } from "./workflow";
 
@@ -138,6 +147,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === "RESCAN_CONFIG_UPDATED") {
     setupRescanAlarm().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (msg.type === "CLEAR_SCANNED_DATA") {
+    handleClearScannedData(msg as ClearScannedDataRequest).then(sendResponse);
     return true;
   }
 });
@@ -591,6 +605,27 @@ async function handleGetFile(id: string) {
 
   console.log("[xUpload] Sending:", data.name);
   return data;
+}
+
+async function handleClearScannedData(
+  req: ClearScannedDataRequest
+): Promise<ClearScannedDataResponse> {
+  const workflowId = req.workflowId || createWorkflowId("clear-bg");
+  logWorkflowStep(workflowId, "clear.start");
+  try {
+    await clearScannedData();
+    await new Promise<void>((resolve) => {
+      chrome.storage.local.remove(["vocab"], () => resolve());
+    });
+    importVocab({ terms: [], idf: [] });
+
+    const count = await getCount();
+    logWorkflowStep(workflowId, "clear.done", { remainingIndexedCount: count });
+    return { ok: true, count, workflowId };
+  } catch (err: any) {
+    logWorkflowError(workflowId, "clear.failed", err);
+    return { ok: false, error: err?.message || String(err), workflowId };
+  }
 }
 
 // ---- Auto-rescan with chrome.alarms ----
