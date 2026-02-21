@@ -4,6 +4,70 @@ Post-hackathon improvement plan. Items are grouped by area, roughly ordered by p
 
 ---
 
+## Folder-frequency boost (replace exact path matching)
+
+**Current state:** `pathMemoryBoost` in `background.ts` does an exact file path lookup:
+```typescript
+const pathMemoryBoost = usedPathSet.has(r.record.path) ? 1 : 0;
+```
+This means uploading `23S/OS/HW1.pdf` only boosts that exact file. A new `HW4.pdf` in the same folder gets 0.
+
+**Goal:** Match at the folder level with frequency weighting. If a user consistently uploads from `23S/OS/` on gradescope.com, every file in that folder should get a proportional boost — even files that didn't exist yet when the last upload happened.
+
+**The data is already there.** `upload_history` stores `fileId` (= full relative path) and `websiteHost`. We just need to aggregate differently:
+
+```typescript
+// Instead of a flat set of file paths...
+const usedPathSet = new Set(usedPaths); // current approach
+
+// Build a folder → upload count map from history:
+const folderFreq = new Map<string, number>();
+for (const h of history) {
+  const folder = h.fileId.split("/").slice(0, -1).join("/"); // "23S/OS/HW1.pdf" → "23S/OS"
+  folderFreq.set(folder, (folderFreq.get(folder) || 0) + 1);
+}
+const totalUploads = [...folderFreq.values()].reduce((a, b) => a + b, 0);
+
+// Then for each candidate file:
+const candidateFolder = r.record.path.split("/").slice(0, -1).join("/");
+const folderBoost = (folderFreq.get(candidateFolder) || 0) / totalUploads; // 0.0–1.0
+```
+
+**Bonus — URL-level granularity:** `upload_history` also stores `pageUrl`. Instead of grouping only by hostname (`gradescope.com`), group by hostname + URL path prefix (e.g., `gradescope.com/courses/12345`) so different courses get independent folder memories. This prevents the CS folder from getting boosted on the OS course page.
+
+---
+
+## Pre-navigate the file picker to the last-used folder
+
+**Current state:** When the stored directory handle expires and xUpload falls back to asking the user to reauthorize, it calls `showDirectoryPicker()` with no hint about where to start.
+
+**Goal:** When the fallback picker opens, start it in the subfolder the user last uploaded from on this website.
+
+**Is this implementable?** Yes, with one constraint: it only works for files within the already-scanned folder. Browser security prevents us from reading arbitrary filesystem paths from the native file picker — `input.files[0]` gives you a `File` with only the filename, no directory path.
+
+**What already exists:** `saveUsedPath` and `getUsedPaths` in `vectordb.ts` already store the relative path of every xUpload-initiated upload, per website hostname. The data is there.
+
+**What's missing:** A small helper that walks the stored root `FileSystemDirectoryHandle` to find the subfolder handle, then passes it as `startIn` to `showOpenFilePicker()` or `showDirectoryPicker()`:
+
+```typescript
+async function getSubfolderHandle(
+  rootHandle: FileSystemDirectoryHandle,
+  filePath: string // e.g. "resumes/John_CV.pdf"
+): Promise<FileSystemDirectoryHandle> {
+  const parts = filePath.split("/").slice(0, -1); // drop filename
+  let handle: FileSystemDirectoryHandle = rootHandle;
+  for (const part of parts) {
+    handle = await handle.getDirectoryHandle(part);
+  }
+  return handle;
+}
+
+// Usage in fallback flow:
+const lastPath = (await getUsedPaths(host))[0]; // most recent
+const subHandle = await getSubfolderHandle(rootHandle, lastPath);
+showDirectoryPicker({ startIn: subHandle });
+```
+
 ## Matching Quality
 
 ### Better image indexing
