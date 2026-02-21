@@ -24,7 +24,6 @@ import {
   getRescanConfig,
   saveRescanConfig,
   saveUsedPath,
-  getUsedPaths,
   clearScannedData,
 } from "./vectordb";
 import type {
@@ -255,20 +254,25 @@ async function handleMatch(req: MatchRequest): Promise<MatchResponse> {
     }
 
     let history: UploadHistoryEntry[] = [];
-    let usedPaths: string[] = [];
     if (pageHost) {
       servicesCalled.add("vectordb.getHistoryByHost");
-      servicesCalled.add("vectordb.getUsedPaths");
       history = await getHistoryByHost(pageHost);
-      usedPaths = await getUsedPaths(pageHost);
       logWorkflowStep(workflowId, "service.history.lookup.done", {
         host: pageHost,
         historyRows: history.length,
-        memorizedPaths: usedPaths.length,
       });
     }
 
-    const usedPathSet = new Set(usedPaths);
+    // Count how many uploads came from each folder on this host.
+    // e.g. history has "23S/OS/HW1.pdf", "23S/OS/HW2.pdf", "23S/CS/lab1.pdf"
+    // → folderFreq = { "23S/OS": 2, "23S/CS": 1 }
+    const folderFreq = new Map<string, number>();
+    for (const h of history) {
+      const parts = h.fileId.split("/");
+      const folder = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+      folderFreq.set(folder, (folderFreq.get(folder) || 0) + 1);
+    }
+    const totalFolderUploads = [...folderFreq.values()].reduce((a, b) => a + b, 0);
     const historyMap = new Map<string, { count: number; lastTs: number }>();
     for (const h of history) {
       const existing = historyMap.get(h.fileId);
@@ -297,7 +301,13 @@ async function handleMatch(req: MatchRequest): Promise<MatchResponse> {
 
       const pathNameScore = computePathNameScore(r.record.path, req.context);
       const contentOverlap = computeContentOverlap(r.record.textPreview, req.context);
-      const pathMemoryBoost = usedPathSet.has(r.record.path) ? 1 : 0;
+      // Folder-frequency boost: 0.0–1.0 based on what fraction of past
+      // uploads on this site came from the same folder as this candidate.
+      const candidateParts = r.record.path.split("/");
+      const candidateFolder = candidateParts.length > 1 ? candidateParts.slice(0, -1).join("/") : "";
+      const folderBoost = totalFolderUploads > 0
+        ? (folderFreq.get(candidateFolder) || 0) / totalFolderUploads
+        : 0;
       const hasHistory = historyBoost > 0;
 
       const weights = tfidfUseful
@@ -313,7 +323,7 @@ async function handleMatch(req: MatchRequest): Promise<MatchResponse> {
         historyBoost * weights.history +
         pathNameScore * weights.path +
         contentOverlap * weights.content +
-        pathMemoryBoost * weights.pathMemory;
+        folderBoost * weights.pathMemory;
 
       return {
         ...r,
@@ -324,7 +334,7 @@ async function handleMatch(req: MatchRequest): Promise<MatchResponse> {
           historyBoost,
           pathNameScore,
           contentOverlap,
-          pathMemoryBoost,
+          folderBoost,
           weights,
         },
       };
@@ -342,7 +352,7 @@ async function handleMatch(req: MatchRequest): Promise<MatchResponse> {
       historyBoost: roundScore(r.debug.historyBoost),
       pathNameScore: roundScore(r.debug.pathNameScore),
       contentOverlap: roundScore(r.debug.contentOverlap),
-      pathMemoryBoost: r.debug.pathMemoryBoost,
+      folderBoost: roundScore(r.debug.folderBoost),
       historyCount: r.historyCount,
       weights: r.debug.weights,
     })));
