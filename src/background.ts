@@ -263,14 +263,41 @@ async function handleMatch(req: MatchRequest): Promise<MatchResponse> {
       });
     }
 
-    // Count how many uploads came from each folder on this host.
-    // e.g. history has "23S/OS/HW1.pdf", "23S/OS/HW2.pdf", "23S/CS/lab1.pdf"
-    // → folderFreq = { "23S/OS": 2, "23S/CS": 1 }
+    // Parse current page path segments for URL-based weighting.
+    // e.g. "https://gradescope.com/courses/12345/assignments/5"
+    //   → ["courses", "12345", "assignments", "5"]
+    const currentPathSegments: string[] = [];
+    if (req.pageUrl) {
+      try {
+        currentPathSegments.push(...new URL(req.pageUrl).pathname.split("/").filter(Boolean));
+      } catch { /* ignore */ }
+    }
+
+    // Count how many uploads came from each folder, weighted by URL similarity.
+    // This gives course-level granularity on multi-course sites (Gradescope, Canvas, etc.)
+    // without needing to know anything about site structure.
+    //
+    // Weighting rules (matching leading path segments):
+    //   ≥2 segments match → 1.0  (same course/section, e.g. /courses/12345/...)
+    //    1 segment matches → 0.4  (same site section but different id)
+    //    0 segments match  → 0.1  (same hostname only — very weak signal)
     const folderFreq = new Map<string, number>();
     for (const h of history) {
+      let weight = 1.0;
+      if (currentPathSegments.length > 0 && h.pageUrl) {
+        try {
+          const histSegments = new URL(h.pageUrl).pathname.split("/").filter(Boolean);
+          let matches = 0;
+          for (let i = 0; i < Math.min(currentPathSegments.length, histSegments.length); i++) {
+            if (currentPathSegments[i] === histSegments[i]) matches++;
+            else break;
+          }
+          weight = matches >= 2 ? 1.0 : matches === 1 ? 0.4 : 0.1;
+        } catch { /* keep weight = 1.0 */ }
+      }
       const parts = h.fileId.split("/");
       const folder = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
-      folderFreq.set(folder, (folderFreq.get(folder) || 0) + 1);
+      folderFreq.set(folder, (folderFreq.get(folder) || 0) + weight);
     }
     const totalFolderUploads = [...folderFreq.values()].reduce((a, b) => a + b, 0);
     const historyMap = new Map<string, { count: number; lastTs: number }>();
