@@ -4,65 +4,80 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-xUpload — 轻量级 Chrome Extension，基于本地向量数据库实现「页面语义提示 → 本地文件智能推荐 → 自动填充上传控件」。
+xUpload is a lightweight Chrome Extension that recommends local files based on the semantic context of upload areas on a webpage, and auto-fills `<input type="file">` controls.
 
-## Spec
+**Current stage:** Post-hackathon — focusing on optimization, quality improvements, and new features.
 
-### 核心流程
+## How It Works
 
-**阶段一：索引建立（用户主动触发）**
+### Phase 1: Indexing (User-triggered)
 
-1. 用户通过 Popup 授权一个本地文件夹
-2. 扩展遍历文件夹内所有文件（图片、PDF、文档等）
-3. 对每个文件的内容生成 embedding 向量（图片用视觉特征描述，文档提取文本）
-4. 将 embedding + 文件元信息存入本地向量数据库（IndexedDB）
+1. User selects a local folder via the popup
+2. Extension scans all files in the folder recursively
+3. For each file, text is extracted and converted to an embedding vector
+4. Vectors + file metadata are stored in local IndexedDB
 
-**阶段二：智能推荐（自动触发）**
+### Phase 2: Recommendation (Auto-triggered)
 
-1. Content script 检测页面中的 `<input type="file">` 元素，在旁边注入推荐按钮
-2. 用户点击按钮 → 提取该控件周围的上下文文本（label、placeholder、周围文字，如"请上传护照文件"）
-3. 将提示文本转为查询向量
-4. 在本地向量数据库中进行相似度搜索，返回 top-N 匹配文件
-5. 以极简浮层面板展示推荐结果
-6. 用户点击推荐项 → 自动填入对应的 `<input type="file">`
+1. Content script detects `<input type="file">` elements and injects a ⚡ button
+2. User clicks the button → context text around the input is extracted (labels, placeholders, nearby text)
+3. Context text is converted to a query vector
+4. Vector database is searched for the top-N most similar files
+5. A small panel shows the results
+6. User clicks a result → file is auto-filled into the input
 
-### 技术栈
+## Tech Stack
 
 - Chrome Extension Manifest V3
 - TypeScript
-- Vite 打包
-- 向量化：浏览器端轻量模型（transformers.js）或 TF-IDF
-- 向量存储：IndexedDB（本地向量数据库）
+- Vite
+- TF-IDF vectorization (local, no API required)
+- Gemini API (optional: embedding + VLM modes)
+- IndexedDB (local vector database)
 
-### 模块划分
+## Module Overview
 
-| 模块 | 职责 |
-|------|------|
-| `content.ts` | 检测 file input、注入按钮、提取上下文、展示推荐面板 |
-| `background.ts` | 协调索引构建与匹配请求 |
-| `popup.ts` | 用户管理授权文件夹、触发索引构建 |
-| `embeddings.ts` | 文件内容 → embedding 向量（文本提取 + 向量化） |
-| `vectordb.ts` | 本地向量数据库（IndexedDB 存储 + 余弦相似度搜索） |
+| Module | Responsibility |
+|--------|---------------|
+| `content.ts` | Detect file inputs, inject buttons, extract context, show recommendation panel |
+| `background.ts` | Coordinate indexing and matching, serve as message hub |
+| `popup.ts` | User-facing controls: folder selection, rescan, config |
+| `embeddings.ts` | Text extraction + TF-IDF vectorization |
+| `vectordb.ts` | IndexedDB storage + cosine similarity search |
+| `apiEmbeddings.ts` | Gemini API wrappers (embedding + VLM) |
+| `types.ts` | Shared TypeScript interfaces and message types |
+| `workflow.ts` | Structured logging for debugging |
 
-### 文件内容处理
+## File Content Handling
 
-| 文件类型 | 向量化方式 |
-|---------|-----------|
-| PDF / 文档 | 提取文本内容 → embedding |
-| 图片 | 文件名 + EXIF/元数据 → embedding（MVP 阶段） |
-| 其他 | 文件名 + 路径 + 类型 → embedding |
+| File Type | How it's vectorized |
+|-----------|---------------------|
+| PDF / documents | Text extracted via regex → embedding |
+| Images | Filename + path keywords → embedding (VLM optional) |
+| Text files | Raw content → embedding |
+| Office docs | Filename + type keywords → embedding |
 
-### 设计原则
+## Design Principles
 
-- **本地优先**：所有数据和计算留在用户设备，不上传文件到任何服务器
-- **低侵入**：仅在 file input 旁添加一个按钮，不修改页面其他内容
-- **黑客松项目**：目标 24 小时内完成最小可用原型
+- **Local-first**: All data and computation stay on the user's device. No files are uploaded to any server.
+- **Low-friction**: Only adds a small button next to file inputs; does not modify the rest of the page.
+- **Hybrid matching**: TF-IDF for offline/free use; Gemini embedding/VLM for higher accuracy when an API key is provided.
 
 ## Build
 
 ```bash
-npm run build    # 构建到 dist/
-npm run dev      # watch 模式
+npm run build    # Build to dist/
+npm run dev      # Watch mode
 ```
 
-加载扩展：Chrome → `chrome://extensions` → 开发者模式 → Load unpacked → 选择 `dist` 目录
+Load extension in Chrome: `chrome://extensions` → Developer mode → Load unpacked → select the `dist/` folder.
+
+## Docs
+
+See `docs/` for architecture, embedding details, and changelog:
+
+- [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) — full architecture overview (start here)
+- [docs/embedding-generation.md](docs/embedding-generation.md) — how files are indexed
+- [docs/embedding_flow.md](docs/embedding_flow.md) — end-to-end data flow
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) — what has been built so far
+- [docs/roadmap.md](docs/roadmap.md) — planned improvements

@@ -27,7 +27,7 @@
 
 On pages with file upload fields, the extension injects **multiple** ⚡ buttons for what appears to be a single upload area. See screenshot:
 
-![Screenshot](../assets/CleanShot_2026-02-07_at_11.30.21_2x-283847b3-03b1-4c5d-851d-995e6b273770.png)
+![Screenshot](./assets/screenshot-duplicate-buttons.png)
 
 For the "Resume" upload area, there are **3 lightning buttons** visible instead of 1. Each button, when clicked, opens a recommendation panel with **different file suggestions**. This happens because each button was created with a different `UploadTarget` object (different `anchor` element and different `context` text), so they query the backend with different context strings.
 

@@ -142,5 +142,4 @@ Usually happens after extension reload while old content script is still in a ta
 
 ## License
 
-Hackathon / prototype project.  
-Add an explicit license (MIT / Apache-2.0, etc.) before public release.
+MIT — add a `LICENSE` file before public release.
