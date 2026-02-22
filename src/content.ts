@@ -158,6 +158,29 @@ function extractZoneContext(
   // Zone text (the container around the upload field — labels, hints, etc.)
   parts.push((zone.textContent || "").slice(0, 500));
 
+  // Compose-window context: in web email clients (Gmail, Outlook, etc.) the
+  // meaningful context is the email subject + body, not the toolbar the
+  // attachment button lives in. Walk up to find the nearest dialog/form
+  // container and pull in any subject input and contenteditable body text.
+  const composeRoot =
+    zone.closest('[role="dialog"]') ||
+    zone.closest('[role="main"]') ||
+    zone.closest("form") ||
+    document.body;
+
+  // Subject line (input with subject-like name/placeholder/aria-label)
+  const subjectInput = composeRoot.querySelector<HTMLInputElement>(
+    'input[name*="subject" i], input[placeholder*="subject" i], input[aria-label*="subject" i]',
+  );
+  if (subjectInput?.value) parts.push(subjectInput.value);
+
+  // Contenteditable body (email body, rich-text fields)
+  const editables = composeRoot.querySelectorAll<HTMLElement>('[contenteditable="true"]');
+  for (const editable of editables) {
+    const text = (editable.textContent || "").trim();
+    if (text.length > 5) parts.push(text.slice(0, 300));
+  }
+
   return parts.join(" ").trim();
 }
 
@@ -257,6 +280,15 @@ function onZoneLeave() {
 /* ================================================================== */
 
 async function showHoverPanel(target: UploadTarget) {
+  // Re-extract context at hover time so we pick up email body/subject text
+  // that was typed AFTER the zone was first detected (e.g. Gmail compose).
+  const freshContext = extractZoneContext(target.fileInput, target.zone);
+  if (freshContext !== target.context) {
+    target.context = freshContext;
+    // Invalidate stale cached results that were built with the old context.
+    resultCache.delete(target.zone);
+  }
+
   const workflowId = createWorkflowId("recommend");
   logWorkflowStep(workflowId, "recommend.start", {
     contextPreview: target.context.slice(0, 140),
