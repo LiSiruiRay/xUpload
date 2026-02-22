@@ -1,145 +1,190 @@
 # xUpload
 
-xUpload is a lightweight Chrome extension that recommends local files based on the semantic context of upload areas on a webpage, and helps users auto-fill `<input type="file">` controls.
+> **Smart file upload recommendations for any website.**
+> xUpload watches for file upload fields as you browse, highlights them, and instantly recommends the right file from your local computer — no digging through folders required.
 
-## Features
 
-- Local folder scan and indexing (with incremental rescan support)
-- Upload context extraction (label / placeholder / nearby text)
-- Multi-strategy matching:
-  - TF-IDF (fully local, no API required)
-  - Gemini Embedding (Fast mode)
-  - Screenshot + VLM (VLM mode)
-- Preview support (image / PDF / text)
-- One-click file fill for upload controls
-- Upload history and path-memory ranking boosts
-- One-click index cleanup (`Clear scanned data`) without deleting real files
+<p align="center">
+  <img src="https://img.shields.io/badge/Chrome-Extension-4285F4?logo=googlechrome&logoColor=white" alt="Chrome Extension"/>
+  <img src="https://img.shields.io/badge/Manifest-V3-green" alt="Manifest V3"/>
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white" alt="TypeScript"/>
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License"/>
+  <img src="https://img.shields.io/badge/Privacy-Local--first-brightgreen" alt="Local First"/>
+</p>
 
-## Tech Stack
+---
 
-- Chrome Extension Manifest V3
-- TypeScript
-- Vite
-- IndexedDB (local vectors + metadata)
-- `chrome.storage.local` (extension config)
+## What it does
 
-## Project Structure
+When you land on a page that has a file upload field — a job application, a homework submission, a passport upload form — xUpload:
 
-```text
-xUpload/
-├─ src/
-│  ├─ content.ts        # Page injection: detect file inputs, show panel, fill files
-│  ├─ background.ts     # Message hub: matching, indexing, file read, clear flow
-│  ├─ popup.ts          # Popup interactions: scan, rescan, config, clear
-│  ├─ embeddings.ts     # Local tokenization + TF-IDF
-│  ├─ apiEmbeddings.ts  # Gemini embedding / VLM calls
-│  ├─ vectordb.ts       # IndexedDB persistence and search
-│  ├─ workflow.ts       # Workflow logging helpers
-│  └─ types.ts          # Message and shared data types
-├─ popup.html
-├─ manifest.json
-├─ manifest.dist.json
-└─ dist/                # Build output (used by Load unpacked)
-```
+1. **Automatically highlights** the upload area
+2. **Shows a ranked list** of your local files that best match what the page is asking for
+3. **Lets you preview** the file (image, PDF, or text) before committing
+4. **Fills the upload field** in one click — no file picker dialog
 
-## Install & Build
+It learns from your usage: if you always submit OS homework from `~/Documents/23S/OS/`, xUpload will rank those files higher the next time you're on that course page.
 
-### 1) Install dependencies
+---
+
+## Install
+
+**From the Chrome Web Store** *(recommended)*
+
+> [Install xUpload on the Chrome Web Store](#) <!-- add link when live -->
+
+**From source** — see [Build & Development](#build--development) below.
+
+---
+
+## Quick Start (Users)
+
+### 1. Index your folder
+
+1. Click the **xUpload icon** in your Chrome toolbar
+2. Click **Select folder** and choose the local folder that contains your files
+3. Wait for the scan to finish — the indexed file count will update
+
+You only need to do this once. xUpload can automatically re-scan for new files in the background.
+
+### 2. Upload smarter
+
+1. Navigate to any page with a file upload field
+2. The upload area will be highlighted automatically
+3. Hover over it — a recommendation panel appears with ranked files
+4. Click a file to preview it, then click **Use this file**
+
+### 3. Reset the index
+
+Click **Clear scanned data** in the popup to wipe the index without touching your real files.
+
+---
+
+## Matching Modes
+
+xUpload has three modes, selectable in the popup:
+
+| Mode | Requires | How it works |
+|------|----------|-------------|
+| **TF-IDF** (default) | Nothing — fully offline | Keyword-based matching using local TF-IDF vectors. Fast and private. |
+| **Fast** | Gemini API key | Uses Google's Gemini embedding model for semantic understanding. Handles synonyms and meaning, not just keywords. |
+| **VLM** | Gemini API key | Captures a screenshot of the upload area and uses Gemini Vision to understand the visual context before matching. Most accurate. |
+
+TF-IDF mode works out of the box with no account or API key. Fast and VLM modes require a free [Google AI Studio](https://aistudio.google.com/) API key.
+
+---
+
+## Privacy
+
+**Your files never leave your device.**
+
+- All indexing and matching runs locally in your browser
+- File vectors and upload history are stored in your browser's IndexedDB — never on a server
+- The optional Gemini modes send only short text excerpts (not your actual files) to Google's API, using your own API key
+
+Read the full [Privacy Policy](docs/PRIVACY.md).
+
+---
+
+## Build & Development
+
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Setup
 
 ```bash
+git clone https://github.com/LiSiruiRay/xUpload.git
+cd xUpload
 npm install
 ```
 
-### 2) Build extension
+### Build
+
+```bash
+npm run build      # Production build → dist/
+npm run dev        # Watch mode (rebuilds on save)
+```
+
+> The content script uses a separate Vite config (`vite.config.content.ts`) and is built as an IIFE. `npm run build` runs both automatically.
+
+### Load in Chrome
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (top-right toggle)
+3. Click **Load unpacked** → select the `dist/` folder
+
+After making code changes:
 
 ```bash
 npm run build
+# Then click ↻ on xUpload in chrome://extensions
+# Hard-refresh the page you're testing on
 ```
 
-### 3) Watch mode for development
+### Project Structure
 
-```bash
-npm run dev
+```
+xUpload/
+├── src/
+│   ├── content.ts        # Detects file inputs, injects UI, fills upload fields
+│   ├── background.ts     # Matching engine, indexing coordinator, message hub
+│   ├── popup.ts          # Popup UI — folder scan, config, clear
+│   ├── embeddings.ts     # TF-IDF tokenization and vectorization
+│   ├── apiEmbeddings.ts  # Gemini API calls (embedding + VLM)
+│   ├── vectordb.ts       # IndexedDB wrapper — store, search, history
+│   ├── workflow.ts       # Structured debug logging
+│   └── types.ts          # Shared TypeScript interfaces
+├── popup.html
+├── manifest.dist.json    # Production manifest (copied to dist/ on build)
+├── vite.config.ts        # Main build config (background + popup)
+├── vite.config.content.ts # Content script build config (IIFE format)
+└── dist/                 # Build output — load this folder in Chrome
 ```
 
-## Load Extension in Chrome
+For a deeper walkthrough of the architecture, see [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).
 
-1. Open `chrome://extensions`
-2. Enable **Developer mode** (top-right)
-3. Click **Load unpacked**
-4. Select this project's `dist/` folder
+---
 
-After code changes:
+## Docs
 
-1. Run `npm run build`
-2. Click refresh (↻) on xUpload in `chrome://extensions`
-3. Refresh your test page (hard refresh recommended)
+| Document | Description |
+|----------|-------------|
+| [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | Full architecture overview — start here |
+| [docs/roadmap.md](docs/roadmap.md) | Planned improvements |
+| [docs/PRIVACY.md](docs/PRIVACY.md) | Privacy policy |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | What's been built |
 
-## Usage
-
-### A. First-time indexing
-
-1. Click the xUpload icon in the browser toolbar
-2. Click **Select folder** and choose your local folder
-3. Wait until scan/index completes (`Indexed files` updates)
-
-### B. Recommend and fill
-
-1. Open a page that contains file upload controls
-2. Hover over the upload area to open recommendation panel
-3. Pick a recommended file, preview it, and click **Use this file**
-
-### C. Clear scanned index
-
-Click **Clear scanned data** in popup:
-
-- Clears xUpload index data (vectors, history, directory handle, path memory)
-- Does **not** delete your real local files
-- Resets state (`Indexed files: 0`, `Last scan: Never scanned`)
-
-## Data Storage
-
-### IndexedDB (primary storage)
-
-Database name: `xupload_vectors`
-
-Stores:
-
-- `files`: file metadata + vectors + text preview
-- `vocabulary`: TF-IDF vocabulary snapshot
-- `dir_handles`: persisted directory handle
-- `upload_history`: upload history entries
-- `config`: rescan config and path memory
-
-### `chrome.storage.local` (config storage)
-
-- `xupload_config`: API key and match mode
-- `xupload_enabled`: extension enable/disable toggle
-- `vocab`: legacy compatibility field (migration path)
-
-> Note: xUpload does not copy or move your real files. Files are read on demand via the stored directory handle.
-
-## Match Modes
-
-- **TF-IDF (no API)**: fully local matching
-- **Fast (Gemini Embedding)**: semantic embedding-based matching
-- **VLM (Screenshot + Gemini)**: screenshot-assisted intent understanding
+---
 
 ## Troubleshooting
 
-### 1) `'cp' is not recognized` on Windows
+**"Extension context invalidated" errors**
+Happens when the extension is reloaded while a content script is still running in an open tab. Fix: reload the extension in `chrome://extensions`, then hard-refresh the affected tab.
 
-This project uses `shx cp` for cross-platform copy in scripts.  
-Run `npm install` first, then `npm run build`.
+**Recommendations not appearing / "No matching files found"**
+- Make sure you've scanned a folder first (popup → Select folder)
+- Try rescanning — the folder permission may have expired
+- If using Gmail or similar: the recommendation panel uses the email subject and body as context. Type your email content first, then hover over the attachment zone.
 
-### 2) `Extension context invalidated` / `sendMessage` errors
+**`cp` not found on Windows**
+Run `npm install` first — the build script uses `shx cp` for cross-platform compatibility.
 
-Usually happens after extension reload while old content script is still in a tab.
+---
 
-1. Reload extension in `chrome://extensions`
-2. Close/reopen the test tab (or hard refresh)
-3. Trigger xUpload again
+## Contributing
+
+Issues and pull requests are welcome.
+
+Before contributing:
+1. Read [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) to understand the architecture
+2. Check [docs/roadmap.md](docs/roadmap.md) for planned work
+3. Open an issue to discuss large changes before building
+
+---
 
 ## License
 
-MIT — add a `LICENSE` file before public release.
+MIT — see [LICENSE](LICENSE) for details.
